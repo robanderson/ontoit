@@ -36,6 +36,11 @@ The system runs in a Docker container, serves a web UI, and connects to a cloud-
 | UR-009b | Environment definitions (name, API base URL) are configured server-side via environment variables | Must |
 | UR-009c | Switching environments reconnects the backend to the selected MySQL database and refreshes all frontend data | Must |
 | UR-009d | The system logs environment switches in an audit trail (who, when, from, to) | Should |
+| UR-009e | A **Local/Test** mode stores all data in-browser (localStorage/in-memory) with no backend required | Must |
+| UR-009f | Local mode uses a mock user (auto-logged-in) so no authentication is needed | Must |
+| UR-009g | Local mode badge is **Red** and labelled "LOCAL — Test Mode" to clearly distinguish it | Must |
+| UR-009h | Local mode can be pre-loaded with seed/fixture data for repeatable testing | Should |
+| UR-009i | Local mode data can be exported as JSON and imported back for test case sharing | Could |
 
 ### 2.2 Task Lists (Kanban Columns)
 
@@ -166,6 +171,21 @@ The system runs in a Docker container, serves a web UI, and connects to a cloud-
    └───────────────────┘   └───────────────────────┘
 
    ◄── Admin toggle in UI selects active database ──►
+
+   ┌──────────────────────────────────────────────┐
+   │  LOCAL / TEST MODE (no backend required)     │
+   │                                              │
+   │  ┌────────────┐    ┌───────────────────────┐ │
+   │  │  React App │───▶│  In-Memory Store      │ │
+   │  │  (browser) │    │  (Zustand + optional  │ │
+   │  │            │◀───│   localStorage)       │ │
+   │  └────────────┘    └───────────────────────┘ │
+   │                                              │
+   │  - Mock auth (auto-login as test user)       │
+   │  - All CRUD via local adapter                │
+   │  - Seed data for repeatable tests            │
+   │  - No network calls                          │
+   └──────────────────────────────────────────────┘
 ```
 
 ### 3.2 Technology Stack
@@ -353,6 +373,9 @@ WebSocket Events
 
 The environment switcher lets admins toggle the **entire application** between
 database backends (e.g., dev vs. production) without restarting the container.
+A third **Local/Test** mode runs entirely in the browser with no backend at all.
+
+#### 3.5.1 Remote Modes (Development / Production / Staging)
 
 **Backend mechanics:**
 
@@ -371,21 +394,77 @@ database backends (e.g., dev vs. production) without restarting the container.
    - An audit log entry is written to the **new** database.
 4. All subsequent API requests use the new Prisma client.
 
-**Frontend mechanics:**
+#### 3.5.2 Local/Test Mode (In-Browser, No Backend)
+
+Local mode is designed for **unit testing, UI development, and demos** — the
+entire data layer runs in the browser with zero network calls.
+
+**Architecture — Data Adapter Pattern:**
+
+The frontend uses a `DataAdapter` interface that abstracts all data operations.
+Two implementations exist:
+
+```typescript
+interface DataAdapter {
+  getTasks(filters?: TaskFilters): Promise<Task[]>
+  createTask(task: CreateTaskInput): Promise<Task>
+  updateTask(id: string, updates: Partial<Task>): Promise<Task>
+  moveTask(id: string, status: Status, sortOrder: number): Promise<Task>
+  // ... all CRUD operations for tasks, notes, attachments, etc.
+}
+
+class ApiAdapter implements DataAdapter {
+  // Calls REST API endpoints (used in dev/prod modes)
+}
+
+class LocalAdapter implements DataAdapter {
+  // Reads/writes to Zustand store backed by localStorage
+  // UUID generation via crypto.randomUUID()
+  // No auth required — uses a hardcoded test user
+}
+```
+
+**How it works:**
+
+1. When the admin selects "Local/Test" mode (or the app is loaded with
+   `?mode=local` query parameter), the frontend:
+   - Swaps the active `DataAdapter` to `LocalAdapter`
+   - Bypasses all authentication (auto-logged-in as "Test User", role: admin)
+   - Disables WebSocket connections
+   - Loads seed data if the local store is empty (or on demand via a button)
+
+2. **Data storage:**
+   - Primary: Zustand in-memory store (fast, reactive)
+   - Persistence: `localStorage` so data survives page refreshes
+   - Seed data: A `seedData.ts` file with representative fixtures (sample
+     tasks, notes, tags, sub-tasks) for repeatable testing
+
+3. **File attachments in local mode:**
+   - Stored as base64 data URLs in localStorage (with a size warning)
+   - Or simply stored as metadata stubs (filename, size) without actual content
+
+4. **Testing benefits:**
+   - Unit tests can instantiate `LocalAdapter` directly — no API mocking needed
+   - Playwright/Cypress E2E tests can use `?mode=local` for fast, deterministic runs
+   - Developers can work on the frontend without running Docker or having DB access
+   - Seed data resets with a single button click for repeatable demos
+
+**Frontend mechanics (all modes):**
 
 1. The app header displays an environment badge (colour-coded):
    - **Green** = Production
    - **Orange** = Development
    - **Blue** = Staging (if configured)
+   - **Red** = Local/Test Mode
 2. Admins see a dropdown arrow on the badge → selects target → confirmation
-   dialog → API call → all clients reload board data automatically.
+   dialog → API call (or local swap) → all data reloads automatically.
 3. Non-admin users see the badge (read-only) and receive a toast notification
    when the environment changes.
 
 **Important considerations:**
 
-- Both databases must have the **same schema version** — Prisma migrations
-  should be run against all environments before switching.
+- Both remote databases must have the **same schema version** — Prisma
+  migrations should be run against all environments before switching.
 - User accounts are **per-database** — switching environment may require
   re-authentication if the user doesn't exist in the target DB.
 - File attachments are stored locally (not in MySQL), so they persist across
@@ -409,6 +488,9 @@ database backends (e.g., dev vs. production) without restarting the container.
 | 1.4 | Backend: User registration & login (JWT, bcrypt, httpOnly cookies) | 4h |
 | 1.5 | Backend: Task CRUD API (create, read, update, archive) | 4h |
 | 1.6 | Frontend: React + TypeScript + Vite + Tailwind + shadcn/ui setup | 3h |
+| 1.6a | Frontend: DataAdapter interface + ApiAdapter + LocalAdapter implementations | 4h |
+| 1.6b | Frontend: Seed data fixtures (`seedData.ts`) with sample tasks, notes, tags | 2h |
+| 1.6c | Frontend: `?mode=local` query param support + local mode auto-login | 2h |
 | 1.7 | Frontend: Login/Register pages | 3h |
 | 1.8 | Frontend: Basic board view — 4 columns, task cards rendered from API | 4h |
 | 1.9 | End-to-end smoke test: register → login → create task → see on board | 2h |
