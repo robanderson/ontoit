@@ -8,7 +8,7 @@
 
 **OnToIt** is a self-hosted, intranet-based task management application inspired by **Things** and **Trello**. It provides a drag-and-drop Kanban-style interface for managing tasks across teams, with support for task hierarchies (parent/child), file attachments, Google Drive links, and a running diary of notes per task.
 
-The system runs in a Docker container, serves a web UI, and requires no external cloud dependencies beyond optional Google Drive integration.
+The system runs in a Docker container, serves a web UI, and connects to a cloud-hosted MySQL database (PairNetworks). An admin-only environment switcher allows toggling between development and production database endpoints without redeploying.
 
 ---
 
@@ -23,6 +23,24 @@ The system runs in a Docker container, serves a web UI, and requires no external
 | UR-003 | Users have a display name and avatar/initials | Should |
 | UR-004 | Session persistence — users stay logged in across browser sessions | Should |
 | UR-005 | LDAP/Active Directory integration for intranet SSO | Could |
+
+### 2.1a Admin Environment Switcher
+
+| ID | Requirement | Priority |
+|----|-------------|----------|
+| UR-006 | Admin users can view the current database environment (Dev / Production) in the UI | Must |
+| UR-007 | Admin users can switch between pre-configured database environments via an in-app toggle | Must |
+| UR-008 | Environment switch triggers a confirmation dialog ("Switch to Production — are you sure?") | Must |
+| UR-009 | The environment indicator is always visible in the app header (e.g., coloured badge: green = Production, orange = Development) | Must |
+| UR-009a | Non-admin users can see which environment they are on but cannot switch | Should |
+| UR-009b | Environment definitions (name, API base URL) are configured server-side via environment variables | Must |
+| UR-009c | Switching environments reconnects the backend to the selected MySQL database and refreshes all frontend data | Must |
+| UR-009d | The system logs environment switches in an audit trail (who, when, from, to) | Should |
+| UR-009e | A **Local/Test** mode stores all data in-browser (localStorage/in-memory) with no backend required | Must |
+| UR-009f | Local mode uses a mock user (auto-logged-in) so no authentication is needed | Must |
+| UR-009g | Local mode badge is **Red** and labelled "LOCAL — Test Mode" to clearly distinguish it | Must |
+| UR-009h | Local mode can be pre-loaded with seed/fixture data for repeatable testing | Should |
+| UR-009i | Local mode data can be exported as JSON and imported back for test case sharing | Could |
 
 ### 2.2 Task Lists (Kanban Columns)
 
@@ -129,21 +147,45 @@ The system runs in a Docker container, serves a web UI, and requires no external
 ### 3.1 System Overview
 
 ```
-┌──────────────────────────────────────────────────────┐
-│                  Docker Container                    │
-│                                                      │
-│  ┌─────────────┐    ┌─────────────┐   ┌───────────┐ │
-│  │   Nginx     │───▶│  Backend    │──▶│ PostgreSQL│ │
-│  │  (reverse   │    │  (Node.js / │   │  Database │ │
-│  │   proxy)    │    │   Express)  │   │           │ │
-│  │  + serves   │    │             │   └───────────┘ │
-│  │  frontend   │    │  REST API   │                  │
-│  │  static     │    │  + WebSocket│   ┌───────────┐ │
-│  │  assets     │    │             │──▶│  File     │ │
-│  └─────────────┘    └─────────────┘   │  Storage  │ │
-│                                       │  (volume) │ │
-│                                       └───────────┘ │
-└──────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────┐
+│               Docker Container                   │
+│                                                  │
+│  ┌───────────┐    ┌──────────────┐               │
+│  │  Nginx    │───▶│   Backend    │               │
+│  │ (reverse  │    │  (Node.js /  │               │
+│  │  proxy)   │    │   Express)   │               │
+│  │ + serves  │    │              │  ┌──────────┐ │
+│  │ frontend  │    │  REST API    │─▶│  File    │ │
+│  │ static    │    │  + WebSocket │  │  Storage │ │
+│  │ assets    │    │              │  │  (volume)│ │
+│  └───────────┘    └──────┬───────┘  └──────────┘ │
+│                          │                       │
+└──────────────────────────┼───────────────────────┘
+                           │
+              ┌────────────┼────────────┐
+              ▼                         ▼
+   ┌───────────────────┐   ┌───────────────────────┐
+   │  DEV MySQL        │   │  PROD MySQL           │
+   │  10.0.0.155:6663  │   │  PairNetworks Cloud   │
+   │  (intranet)       │   │  (hosted)             │
+   └───────────────────┘   └───────────────────────┘
+
+   ◄── Admin toggle in UI selects active database ──►
+
+   ┌──────────────────────────────────────────────┐
+   │  LOCAL / TEST MODE (no backend required)     │
+   │                                              │
+   │  ┌────────────┐    ┌───────────────────────┐ │
+   │  │  React App │───▶│  In-Memory Store      │ │
+   │  │  (browser) │    │  (Zustand + optional  │ │
+   │  │            │◀───│   localStorage)       │ │
+   │  └────────────┘    └───────────────────────┘ │
+   │                                              │
+   │  - Mock auth (auto-login as test user)       │
+   │  - All CRUD via local adapter                │
+   │  - Seed data for repeatable tests            │
+   │  - No network calls                          │
+   └──────────────────────────────────────────────┘
 ```
 
 ### 3.2 Technology Stack
@@ -155,96 +197,113 @@ The system runs in a Docker container, serves a web UI, and requires no external
 | **Drag & Drop** | dnd-kit | Modern, accessible, performant DnD for React |
 | **State Management** | Zustand or React Query | Lightweight, fits server-state-heavy app |
 | **Backend** | Node.js + Express + TypeScript | Same language as frontend, strong ecosystem |
-| **Database** | PostgreSQL 16 | Relational integrity for task hierarchies, JSONB for flexibility |
-| **ORM** | Prisma | Type-safe queries, migrations, schema-as-code |
+| **Database** | MySQL 8 (cloud-hosted, PairNetworks) | Existing hosting; relational integrity for task hierarchies; JSON column support |
+| **ORM** | Prisma (mysql provider) | Type-safe queries, migrations, schema-as-code; supports dynamic datasource URLs for env switching |
 | **Real-time** | Socket.IO | WebSocket with fallback for live board updates |
 | **Auth** | JWT + bcrypt (with httpOnly cookies) | Stateless auth suitable for intranet |
 | **File Storage** | Local filesystem (Docker volume) | Simple, no cloud dependency |
 | **Containerisation** | Docker + Docker Compose | Single-command deployment |
 | **Reverse Proxy** | Nginx | Serves static files, proxies API, handles compression |
 
-### 3.3 Database Schema (Core Entities)
+### 3.3 Database Schema (Core Entities — MySQL)
 
-```
+> All IDs use `CHAR(36)` storing UUIDs generated application-side. This keeps
+> IDs portable across dev/prod databases and avoids AUTO_INCREMENT conflicts
+> when syncing data between environments.
+
+```sql
 users
-  id              UUID PK
-  username        VARCHAR UNIQUE
-  email           VARCHAR UNIQUE
-  display_name    VARCHAR
-  password_hash   VARCHAR
-  role            ENUM(admin, user)
-  avatar_url      VARCHAR NULL
-  created_at      TIMESTAMP
-  updated_at      TIMESTAMP
+  id              CHAR(36) PK                -- UUID generated app-side
+  username        VARCHAR(100) UNIQUE
+  email           VARCHAR(255) UNIQUE
+  display_name    VARCHAR(100)
+  password_hash   VARCHAR(255)
+  role            ENUM('admin','user')
+  avatar_url      VARCHAR(512) NULL
+  created_at      DATETIME DEFAULT NOW()
+  updated_at      DATETIME ON UPDATE NOW()
 
 projects (future: grouping tasks)
-  id              UUID PK
-  name            VARCHAR
+  id              CHAR(36) PK
+  name            VARCHAR(200)
   description     TEXT
-  owner_id        UUID FK → users
-  created_at      TIMESTAMP
+  owner_id        CHAR(36) FK → users
+  created_at      DATETIME DEFAULT NOW()
 
 tasks
-  id              UUID PK
-  title           VARCHAR
-  description     TEXT (rich text as HTML/Markdown)
-  status          ENUM(unassigned, backlog, in_progress, complete, archived)
-  priority        ENUM(urgent, high, medium, low)
-  assigned_to     UUID FK → users NULL
-  created_by      UUID FK → users
-  parent_task_id  UUID FK → tasks NULL (self-referential)
-  project_id      UUID FK → projects NULL
+  id              CHAR(36) PK
+  title           VARCHAR(500)
+  description     TEXT                       -- rich text stored as HTML
+  status          ENUM('unassigned','backlog','in_progress','complete','archived')
+  priority        ENUM('urgent','high','medium','low')
+  assigned_to     CHAR(36) FK → users NULL
+  created_by      CHAR(36) FK → users
+  parent_task_id  CHAR(36) FK → tasks NULL   -- self-referential
+  project_id      CHAR(36) FK → projects NULL
   due_date        DATE NULL
-  sort_order      INTEGER
-  created_at      TIMESTAMP
-  updated_at      TIMESTAMP
+  sort_order      INT
+  created_at      DATETIME DEFAULT NOW()
+  updated_at      DATETIME ON UPDATE NOW()
+  INDEX idx_status (status)
+  INDEX idx_assigned (assigned_to)
+  INDEX idx_parent (parent_task_id)
+  FULLTEXT idx_search (title, description)
 
 task_notes (diary)
-  id              UUID PK
-  task_id         UUID FK → tasks
-  author_id       UUID FK → users
+  id              CHAR(36) PK
+  task_id         CHAR(36) FK → tasks
+  author_id       CHAR(36) FK → users
   content         TEXT
-  is_system       BOOLEAN (true for auto-generated entries)
-  created_at      TIMESTAMP
-  updated_at      TIMESTAMP
+  is_system       TINYINT(1) DEFAULT 0       -- 1 = auto-generated entry
+  created_at      DATETIME DEFAULT NOW()
+  updated_at      DATETIME ON UPDATE NOW()
+  FULLTEXT idx_note_search (content)
 
 task_attachments
-  id              UUID PK
-  task_id         UUID FK → tasks
-  uploaded_by     UUID FK → users
-  file_name       VARCHAR
-  file_path       VARCHAR
+  id              CHAR(36) PK
+  task_id         CHAR(36) FK → tasks
+  uploaded_by     CHAR(36) FK → users
+  file_name       VARCHAR(255)
+  file_path       VARCHAR(512)
   file_size       BIGINT
-  mime_type       VARCHAR
-  created_at      TIMESTAMP
+  mime_type       VARCHAR(100)
+  created_at      DATETIME DEFAULT NOW()
 
 task_links
-  id              UUID PK
-  task_id         UUID FK → tasks
-  url             VARCHAR
-  link_type       ENUM(google_drive, external, other)
-  display_name    VARCHAR
-  added_by        UUID FK → users
-  created_at      TIMESTAMP
+  id              CHAR(36) PK
+  task_id         CHAR(36) FK → tasks
+  url             VARCHAR(2048)
+  link_type       ENUM('google_drive','external','other')
+  display_name    VARCHAR(255)
+  added_by        CHAR(36) FK → users
+  created_at      DATETIME DEFAULT NOW()
 
 task_tags
-  id              UUID PK
-  name            VARCHAR
-  colour          VARCHAR
+  id              CHAR(36) PK
+  name            VARCHAR(50)
+  colour          VARCHAR(7)                 -- hex colour e.g. #FF5733
 
 task_tag_assignments
-  task_id         UUID FK → tasks
-  tag_id          UUID FK → task_tags
-  PK(task_id, tag_id)
+  task_id         CHAR(36) FK → tasks
+  tag_id          CHAR(36) FK → task_tags
+  PRIMARY KEY (task_id, tag_id)
 
 notifications
-  id              UUID PK
-  user_id         UUID FK → users
-  task_id         UUID FK → tasks NULL
-  type            VARCHAR
+  id              CHAR(36) PK
+  user_id         CHAR(36) FK → users
+  task_id         CHAR(36) FK → tasks NULL
+  type            VARCHAR(50)
   message         TEXT
-  read            BOOLEAN DEFAULT false
-  created_at      TIMESTAMP
+  is_read         TINYINT(1) DEFAULT 0
+  created_at      DATETIME DEFAULT NOW()
+  INDEX idx_user_unread (user_id, is_read)
+
+environment_audit_log
+  id              CHAR(36) PK
+  user_id         CHAR(36) FK → users
+  switched_from   VARCHAR(50)                -- e.g. 'development'
+  switched_to     VARCHAR(50)                -- e.g. 'production'
+  created_at      DATETIME DEFAULT NOW()
 ```
 
 ### 3.4 API Design (Key Endpoints)
@@ -298,11 +357,119 @@ Notifications
   PATCH  /api/notifications/:id/read
   POST   /api/notifications/read-all
 
+Environment (admin only)
+  GET    /api/environment                  (current env name + available envs)
+  POST   /api/environment/switch           (body: { target: "production" })
+  GET    /api/environment/audit-log        (history of switches)
+
 WebSocket Events
   board:updated        (task created/moved/updated)
   notification:new     (new notification for user)
   task:typing          (someone is editing a task)
+  environment:switched (all clients reload data after env switch)
 ```
+
+### 3.5 Environment Switcher — How It Works
+
+The environment switcher lets admins toggle the **entire application** between
+database backends (e.g., dev vs. production) without restarting the container.
+A third **Local/Test** mode runs entirely in the browser with no backend at all.
+
+#### 3.5.1 Remote Modes (Development / Production / Staging)
+
+**Backend mechanics:**
+
+1. On startup, the backend reads all `DB_*_URL` environment variables and
+   builds a registry of named environments:
+   ```
+   DB_DEV_URL  → { name: "development", url: "mysql://...@10.0.0.155:6663/ontoit_dev" }
+   DB_PROD_URL → { name: "production",  url: "mysql://...@pairnetworks.example/ontoit" }
+   ```
+2. A Prisma client is instantiated for the `DEFAULT_ENV` on boot.
+3. When an admin hits `POST /api/environment/switch { target: "production" }`:
+   - The backend validates the target exists and the user is an admin.
+   - The current Prisma client is disconnected (`$disconnect()`).
+   - A new Prisma client is created with the target's connection URL.
+   - A WebSocket event `environment:switched` is broadcast to all clients.
+   - An audit log entry is written to the **new** database.
+4. All subsequent API requests use the new Prisma client.
+
+#### 3.5.2 Local/Test Mode (In-Browser, No Backend)
+
+Local mode is designed for **unit testing, UI development, and demos** — the
+entire data layer runs in the browser with zero network calls.
+
+**Architecture — Data Adapter Pattern:**
+
+The frontend uses a `DataAdapter` interface that abstracts all data operations.
+Two implementations exist:
+
+```typescript
+interface DataAdapter {
+  getTasks(filters?: TaskFilters): Promise<Task[]>
+  createTask(task: CreateTaskInput): Promise<Task>
+  updateTask(id: string, updates: Partial<Task>): Promise<Task>
+  moveTask(id: string, status: Status, sortOrder: number): Promise<Task>
+  // ... all CRUD operations for tasks, notes, attachments, etc.
+}
+
+class ApiAdapter implements DataAdapter {
+  // Calls REST API endpoints (used in dev/prod modes)
+}
+
+class LocalAdapter implements DataAdapter {
+  // Reads/writes to Zustand store backed by localStorage
+  // UUID generation via crypto.randomUUID()
+  // No auth required — uses a hardcoded test user
+}
+```
+
+**How it works:**
+
+1. When the admin selects "Local/Test" mode (or the app is loaded with
+   `?mode=local` query parameter), the frontend:
+   - Swaps the active `DataAdapter` to `LocalAdapter`
+   - Bypasses all authentication (auto-logged-in as "Test User", role: admin)
+   - Disables WebSocket connections
+   - Loads seed data if the local store is empty (or on demand via a button)
+
+2. **Data storage:**
+   - Primary: Zustand in-memory store (fast, reactive)
+   - Persistence: `localStorage` so data survives page refreshes
+   - Seed data: A `seedData.ts` file with representative fixtures (sample
+     tasks, notes, tags, sub-tasks) for repeatable testing
+
+3. **File attachments in local mode:**
+   - Stored as base64 data URLs in localStorage (with a size warning)
+   - Or simply stored as metadata stubs (filename, size) without actual content
+
+4. **Testing benefits:**
+   - Unit tests can instantiate `LocalAdapter` directly — no API mocking needed
+   - Playwright/Cypress E2E tests can use `?mode=local` for fast, deterministic runs
+   - Developers can work on the frontend without running Docker or having DB access
+   - Seed data resets with a single button click for repeatable demos
+
+**Frontend mechanics (all modes):**
+
+1. The app header displays an environment badge (colour-coded):
+   - **Green** = Production
+   - **Orange** = Development
+   - **Blue** = Staging (if configured)
+   - **Red** = Local/Test Mode
+2. Admins see a dropdown arrow on the badge → selects target → confirmation
+   dialog → API call (or local swap) → all data reloads automatically.
+3. Non-admin users see the badge (read-only) and receive a toast notification
+   when the environment changes.
+
+**Important considerations:**
+
+- Both remote databases must have the **same schema version** — Prisma
+  migrations should be run against all environments before switching.
+- User accounts are **per-database** — switching environment may require
+  re-authentication if the user doesn't exist in the target DB.
+- File attachments are stored locally (not in MySQL), so they persist across
+  environment switches. Attachment references in the DB may not match across
+  environments.
 
 ---
 
@@ -315,11 +482,15 @@ WebSocket Events
 | # | Task | Est. |
 |---|------|------|
 | 1.1 | Set up monorepo structure (`/frontend`, `/backend`, `/docker`) | 2h |
-| 1.2 | Docker Compose: PostgreSQL + Node backend + Nginx + frontend build | 4h |
-| 1.3 | Backend: Express + TypeScript boilerplate, Prisma setup, DB schema migration | 4h |
+| 1.2 | Docker Compose: Node backend + Nginx + frontend build (no local DB — uses remote MySQL) | 3h |
+| 1.3 | Backend: Express + TypeScript boilerplate, Prisma (mysql provider), DB schema migration against dev MySQL | 4h |
+| 1.3a | Backend: Environment manager — load multiple DB connection configs, admin toggle endpoint, Prisma client hot-swap | 4h |
 | 1.4 | Backend: User registration & login (JWT, bcrypt, httpOnly cookies) | 4h |
 | 1.5 | Backend: Task CRUD API (create, read, update, archive) | 4h |
 | 1.6 | Frontend: React + TypeScript + Vite + Tailwind + shadcn/ui setup | 3h |
+| 1.6a | Frontend: DataAdapter interface + ApiAdapter + LocalAdapter implementations | 4h |
+| 1.6b | Frontend: Seed data fixtures (`seedData.ts`) with sample tasks, notes, tags | 2h |
+| 1.6c | Frontend: `?mode=local` query param support + local mode auto-login | 2h |
 | 1.7 | Frontend: Login/Register pages | 3h |
 | 1.8 | Frontend: Basic board view — 4 columns, task cards rendered from API | 4h |
 | 1.9 | End-to-end smoke test: register → login → create task → see on board | 2h |
@@ -449,7 +620,7 @@ WebSocket Events
 | 8.4 | Error handling, loading states, empty states throughout | 3h |
 | 8.5 | Rate limiting, input validation, security hardening | 3h |
 | 8.6 | Production Docker Compose: health checks, restart policies, logging | 3h |
-| 8.7 | Backup strategy: PostgreSQL pg_dump cron script | 2h |
+| 8.7 | Backup strategy: mysqldump cron script + PairNetworks backup integration | 2h |
 | 8.8 | Environment variable documentation | 1h |
 | 8.9 | User guide / help page | 3h |
 | 8.10 | Performance: query optimisation, frontend bundle analysis | 3h |
@@ -464,22 +635,20 @@ WebSocket Events
 ```yaml
 # docker-compose.yml (simplified)
 services:
-  db:
-    image: postgres:16-alpine
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    environment:
-      POSTGRES_DB: ontoit
-      POSTGRES_USER: ontoit
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-
   backend:
     build: ./backend
-    depends_on: [db]
     volumes:
       - uploads:/app/uploads
     environment:
-      DATABASE_URL: postgresql://ontoit:${DB_PASSWORD}@db:5432/ontoit
+      # Default (active on startup) environment
+      DEFAULT_ENV: development
+
+      # Development MySQL (e.g., local intranet server)
+      DB_DEV_URL: mysql://ontoit:${DB_DEV_PASSWORD}@10.0.0.155:6663/ontoit_dev
+
+      # Production MySQL (PairNetworks cloud)
+      DB_PROD_URL: mysql://ontoit:${DB_PROD_PASSWORD}@mysql-prod.pairnetworks.example/ontoit
+
       JWT_SECRET: ${JWT_SECRET}
       MAX_UPLOAD_SIZE: ${MAX_UPLOAD_SIZE:-25mb}
 
@@ -496,10 +665,13 @@ services:
       - frontend_build:/usr/share/nginx/html
 
 volumes:
-  pgdata:
   uploads:
   frontend_build:
 ```
+
+> **Note:** No local database container — both dev and prod databases are
+> remote MySQL instances. The backend dynamically connects to whichever
+> environment the admin has selected.
 
 **Deployment:** `docker compose up -d` on any intranet server.
 
@@ -510,7 +682,9 @@ volumes:
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `PORT` | External port | `80` |
-| `DB_PASSWORD` | PostgreSQL password | (required) |
+| `DEFAULT_ENV` | Environment active on startup | `development` |
+| `DB_DEV_URL` | Dev MySQL connection string (e.g., `mysql://user:pass@10.0.0.155:6663/ontoit_dev`) | (required) |
+| `DB_PROD_URL` | Prod MySQL connection string (e.g., `mysql://user:pass@host/ontoit`) | (required) |
 | `JWT_SECRET` | Secret for signing tokens | (required) |
 | `MAX_UPLOAD_SIZE` | Max file attachment size | `25mb` |
 | `SESSION_EXPIRY` | JWT token expiry | `7d` |
@@ -520,6 +694,10 @@ volumes:
 | `SMTP_PASS` | Email credentials | (optional) |
 | `ADMIN_EMAIL` | Initial admin account email | (optional) |
 
+> **Adding more environments:** The system reads all `DB_*_URL` variables at
+> startup. To add a staging environment, simply set `DB_STAGING_URL` — it will
+> appear in the admin switcher automatically.
+
 ---
 
 ## 7. Non-Functional Requirements
@@ -528,12 +706,12 @@ volumes:
 |----------|-------------|
 | **Performance** | Board loads in < 2s with 500+ tasks |
 | **Scalability** | Supports 50 concurrent users on a single server |
-| **Availability** | Docker restart policy `unless-stopped`; DB volume persistence |
-| **Security** | Passwords hashed with bcrypt (cost 12); JWT in httpOnly cookies; CSRF protection; input sanitisation; rate limiting on auth endpoints |
-| **Backup** | Automated daily DB dump to mounted volume; upload directory included in backup |
+| **Availability** | Docker restart policy `unless-stopped`; remote MySQL handles DB persistence |
+| **Security** | Passwords hashed with bcrypt (cost 12); JWT in httpOnly cookies; CSRF protection; input sanitisation; rate limiting on auth endpoints; DB credentials encrypted at rest in env vars; TLS for production MySQL connection |
+| **Backup** | MySQL backups managed via PairNetworks hosting tools + optional mysqldump cron; upload directory backed up from Docker volume |
 | **Browser Support** | Chrome, Firefox, Edge (latest 2 versions); Safari (latest) |
 | **Accessibility** | WCAG 2.1 AA for keyboard navigation and screen readers |
-| **Data** | All data stays on-premises; no external service calls except optional Google Drive link validation |
+| **Data** | Task data stored in cloud MySQL (PairNetworks); file attachments stored locally in Docker volume; no other external service calls except optional Google Drive link validation |
 
 ---
 
@@ -544,6 +722,9 @@ volumes:
 | Drag-and-drop conflicts with concurrent users | Medium | Optimistic UI + server-side ordering authority + WebSocket sync |
 | File storage filling up | Medium | Configurable upload limit; monitoring; admin dashboard shows storage usage |
 | Single container = single point of failure | Low (intranet) | Docker restart policy; daily backups; documented recovery procedure |
+| Cloud MySQL unavailable (network/hosting outage) | Medium | Connection retry with backoff; clear "DB unreachable" banner in UI; dev DB as fallback |
+| Admin accidentally switches to wrong environment | Medium | Confirmation dialog with environment name; coloured badge always visible; audit log |
+| Data divergence between dev and prod databases | Low | Environments are intentionally separate; schema migrations run against both; no auto-sync |
 | Google Drive links break if permissions change | Low | Links are just references; display warning if unreachable |
 | Scope creep from user requests | High | Phased delivery; MoSCoW priorities; get sign-off per phase |
 
