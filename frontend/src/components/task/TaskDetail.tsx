@@ -3,7 +3,7 @@ import {
   X, Calendar, Tag, Trash2, GitBranch, ExternalLink,
   Plus, Link as LinkIcon, ChevronDown, ChevronRight,
 } from 'lucide-react';
-import type { Task, TaskNote, TaskLink, TaskPriority } from '../../types';
+import type { Task, TaskNote, TaskLink, TaskPriority, TaskStatus } from '../../types';
 import { useAppStore } from '../../store/useAppStore';
 import { TaskNotes } from './TaskNotes';
 import { SubTaskList } from './SubTaskList';
@@ -16,10 +16,17 @@ const priorityOptions: { value: TaskPriority; label: string; color: string }[] =
   { value: 'low', label: 'Low', color: 'var(--color-priority-low)' },
 ];
 
+const statusOptions: { value: TaskStatus; label: string }[] = [
+  { value: 'unassigned', label: 'Unassigned' },
+  { value: 'backlog', label: 'My Backlog' },
+  { value: 'in_progress', label: 'In Progress' },
+  { value: 'complete', label: 'Complete' },
+];
+
 export function TaskDetail() {
   const {
-    selectedTaskId, tasks, tags: allTags, users,
-    closeTaskDetail, updateTask, deleteTask,
+    selectedTaskId, tasks, tags: allTags, users, currentUser,
+    closeTaskDetail, updateTask, deleteTask, moveTask,
     getNotes, getLinks, getChildTasks, addLink, removeLink,
     createTask,
   } = useAppStore();
@@ -117,7 +124,24 @@ export function TaskDetail() {
                 <span>/</span>
               </>
             )}
-            <span className="uppercase">{task.status.replace('_', ' ')}</span>
+            <select
+              value={task.status}
+              onChange={(e) => {
+                const newStatus = e.target.value as TaskStatus;
+                if (newStatus === 'unassigned') {
+                  moveTask(task.id, 'unassigned', 0, null);
+                } else if (task.status === 'unassigned' && currentUser) {
+                  moveTask(task.id, newStatus, 0, currentUser.id);
+                } else {
+                  moveTask(task.id, newStatus, 0);
+                }
+              }}
+              className="text-xs px-2 py-1 border border-[var(--color-border)] rounded-md bg-white uppercase font-medium"
+            >
+              {statusOptions.map(s => (
+                <option key={s.value} value={s.value}>{s.label}</option>
+              ))}
+            </select>
           </div>
           <div className="flex items-center gap-2">
             <button
