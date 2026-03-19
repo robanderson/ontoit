@@ -12,6 +12,7 @@ import {
 import type { Task, TaskStatus } from '../../types';
 import { useAppStore } from '../../store/useAppStore';
 import { Column } from './Column';
+import { CollapsedColumn } from './CollapsedColumn';
 import { TaskCard } from './TaskCard';
 import { AssignDialog } from './AssignDialog';
 
@@ -23,7 +24,7 @@ interface PendingAssign {
 }
 
 export function Board() {
-  const { tasks, currentUser, moveTask, addNote } = useAppStore();
+  const { tasks, currentUser, moveTask, addNote, columnVisibility } = useAppStore();
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [pendingAssign, setPendingAssign] = useState<PendingAssign | null>(null);
 
@@ -115,9 +116,13 @@ export function Board() {
         onDragEnd={handleDragEnd}
       >
         <div className="flex gap-4 p-6 flex-1 overflow-x-auto">
-          {COLUMNS.map(status => (
-            <Column key={status} status={status} tasks={tasksByStatus[status]} />
-          ))}
+          {COLUMNS.map(status =>
+            columnVisibility[status] ? (
+              <Column key={status} status={status} tasks={tasksByStatus[status]} />
+            ) : (
+              <CollapsedColumn key={status} status={status} count={tasksByStatus[status].length} />
+            )
+          )}
         </div>
 
         <DragOverlay>

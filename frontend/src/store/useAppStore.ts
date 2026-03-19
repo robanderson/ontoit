@@ -1,7 +1,23 @@
 import { create } from 'zustand';
-import type { Task, TaskNote, TaskLink, Tag, User, EnvironmentMode, CreateTaskInput } from '../types';
+import type { Task, TaskNote, TaskLink, Tag, User, EnvironmentMode, CreateTaskInput, TaskStatus } from '../types';
 import type { DataAdapter } from '../adapters/DataAdapter';
 import { localAdapter } from '../adapters/LocalAdapter';
+
+export type ColumnVisibility = Record<TaskStatus, boolean>;
+
+const COLUMN_VISIBILITY_KEY = 'ontoit-column-visibility';
+
+function loadColumnVisibility(): ColumnVisibility {
+  try {
+    const saved = localStorage.getItem(COLUMN_VISIBILITY_KEY);
+    if (saved) return JSON.parse(saved);
+  } catch {}
+  return { unassigned: true, backlog: true, in_progress: true, complete: true, archived: false };
+}
+
+function saveColumnVisibility(v: ColumnVisibility) {
+  localStorage.setItem(COLUMN_VISIBILITY_KEY, JSON.stringify(v));
+}
 
 interface AppState {
   // Environment
@@ -18,6 +34,8 @@ interface AppState {
   selectedTaskId: string | null;
   isTaskDetailOpen: boolean;
   isCreatingTask: boolean;
+  columnVisibility: ColumnVisibility;
+  isSidebarOpen: boolean;
 
   // Actions
   loadData: () => Promise<void>;
@@ -34,6 +52,8 @@ interface AppState {
   addLink: (taskId: string, url: string, displayName: string, linkType: TaskLink['linkType']) => Promise<TaskLink>;
   removeLink: (linkId: string) => Promise<void>;
   getChildTasks: (parentId: string) => Promise<Task[]>;
+  toggleColumnVisibility: (status: TaskStatus) => void;
+  toggleSidebar: () => void;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -46,6 +66,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   selectedTaskId: null,
   isTaskDetailOpen: false,
   isCreatingTask: false,
+  columnVisibility: loadColumnVisibility(),
+  isSidebarOpen: false,
 
   loadData: async () => {
     const { adapter } = get();
@@ -127,5 +149,16 @@ export const useAppStore = create<AppState>((set, get) => ({
   getChildTasks: async (parentId) => {
     const { adapter } = get();
     return adapter.getChildTasks(parentId);
+  },
+
+  toggleColumnVisibility: (status) => {
+    const { columnVisibility } = get();
+    const updated = { ...columnVisibility, [status]: !columnVisibility[status] };
+    saveColumnVisibility(updated);
+    set({ columnVisibility: updated });
+  },
+
+  toggleSidebar: () => {
+    set({ isSidebarOpen: !get().isSidebarOpen });
   },
 }));

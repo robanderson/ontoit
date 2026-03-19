@@ -1,10 +1,10 @@
-import { Plus, RotateCcw } from 'lucide-react';
+import { Plus, RotateCcw, PanelLeft } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { EnvironmentBadge } from './EnvironmentBadge';
 import { resetLocalData } from '../../adapters/LocalAdapter';
 
 export function Header() {
-  const { currentUser, setCreatingTask, loadData, environment } = useAppStore();
+  const { currentUser, setCreatingTask, loadData, environment, toggleSidebar, isSidebarOpen } = useAppStore();
 
   const handleReset = () => {
     if (confirm('Reset all local data to seed fixtures?')) {
@@ -16,6 +16,17 @@ export function Header() {
   return (
     <header className="bg-white border-b border-[var(--color-border)] px-6 py-3 flex items-center justify-between">
       <div className="flex items-center gap-4">
+        <button
+          onClick={toggleSidebar}
+          className={`p-1.5 rounded-lg transition-colors ${
+            isSidebarOpen
+              ? 'bg-[var(--color-brand-50)] text-[var(--color-brand-600)]'
+              : 'text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-tertiary)]'
+          }`}
+          title="Toggle column visibility sidebar"
+        >
+          <PanelLeft size={18} />
+        </button>
         <h1 className="text-xl font-semibold tracking-tight text-[var(--color-text-primary)]">
           OnToIt
         </h1>
