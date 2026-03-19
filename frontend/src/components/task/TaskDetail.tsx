@@ -71,7 +71,6 @@ export function TaskDetail() {
 
   const parentTask = task.parentTaskId ? tasks.find(t => t.id === task.parentTaskId) : null;
   const assignee = task.assignedTo ? users.find(u => u.id === task.assignedTo) : null;
-  const taskTags = allTags.filter(t => task.tags.includes(t.id));
   const childDone = children.filter(c => c.status === 'complete').length;
 
   const handleTitleBlur = () => {
@@ -212,20 +211,39 @@ export function TaskDetail() {
             </div>
 
             {/* Tags */}
-            {taskTags.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">
-                <Tag size={13} className="text-[var(--color-text-tertiary)] mt-0.5" />
-                {taskTags.map(tag => (
-                  <span
-                    key={tag.id}
-                    className="text-xs font-medium px-2 py-0.5 rounded"
-                    style={{ color: tag.colour, backgroundColor: `${tag.colour}15` }}
-                  >
-                    {tag.name}
-                  </span>
-                ))}
+            <div>
+              <label className="text-xs font-medium text-[var(--color-text-tertiary)] uppercase tracking-wide flex items-center gap-1.5">
+                <Tag size={13} />
+                Categories
+              </label>
+              <div className="flex flex-wrap gap-1.5 mt-1.5">
+                {allTags.map(tag => {
+                  const isActive = task.tags.includes(tag.id);
+                  return (
+                    <button
+                      key={tag.id}
+                      onClick={() => {
+                        const newTags = isActive
+                          ? task.tags.filter(id => id !== tag.id)
+                          : [...task.tags, tag.id];
+                        updateTask(task.id, { tags: newTags });
+                      }}
+                      className={`text-xs font-medium px-2 py-0.5 rounded border transition-all ${
+                        isActive
+                          ? 'border-transparent'
+                          : 'border-dashed border-[var(--color-border)] opacity-40 hover:opacity-70'
+                      }`}
+                      style={{
+                        color: tag.colour,
+                        backgroundColor: isActive ? `${tag.colour}15` : 'transparent',
+                      }}
+                    >
+                      {tag.name}
+                    </button>
+                  );
+                })}
               </div>
-            )}
+            </div>
 
             {/* Description */}
             <div>

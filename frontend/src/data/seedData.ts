@@ -33,6 +33,7 @@ export const seedTags: Tag[] = [
   { id: 'tag-3', name: 'Urgent', colour: '#c92a2a' },
   { id: 'tag-4', name: 'Review', colour: '#e8590c' },
   { id: 'tag-5', name: 'Documentation', colour: '#1971c2' },
+  { id: 'tag-6', name: 'Ferment Checks', colour: '#862e9c' },
 ];
 
 const now = new Date().toISOString();
@@ -155,6 +156,31 @@ export const seedTasks: Task[] = [
     dueDate: '2026-04-05',
     sortOrder: 1,
     tags: ['tag-4', 'tag-1'],
+    createdAt: now,
+    updatedAt: now,
+  },
+  {
+    id: 'task-10',
+    title: 'Set up ferment monitoring spreadsheet',
+    description: `Set up an Excel spreadsheet for ferment monitoring with the following columns:
+
+- Tank Number
+- Yeast strain
+- Batch Code
+- Brix reading
+- Temperature
+- Date/time of reading
+- Notes / observations
+
+Jen to set up the initial spreadsheet. Rob to e-mail Hiro re: Vintrace login access for Jen.`,
+    status: 'unassigned',
+    priority: 'high',
+    assignedTo: null,
+    createdBy: 'user-1',
+    parentTaskId: null,
+    dueDate: '2026-03-21',
+    sortOrder: 3,
+    tags: ['tag-6'],
     createdAt: now,
     updatedAt: now,
   },

@@ -52,6 +52,7 @@ interface AppState {
   addLink: (taskId: string, url: string, displayName: string, linkType: TaskLink['linkType']) => Promise<TaskLink>;
   removeLink: (linkId: string) => Promise<void>;
   getChildTasks: (parentId: string) => Promise<Task[]>;
+  createTag: (name: string, colour: string) => Promise<Tag>;
   toggleColumnVisibility: (status: TaskStatus) => void;
   toggleSidebar: () => void;
 }
@@ -149,6 +150,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   getChildTasks: async (parentId) => {
     const { adapter } = get();
     return adapter.getChildTasks(parentId);
+  },
+
+  createTag: async (name, colour) => {
+    const { adapter } = get();
+    const tag = await adapter.createTag(name, colour);
+    const tags = await adapter.getTags();
+    set({ tags });
+    return tag;
   },
 
   toggleColumnVisibility: (status) => {
