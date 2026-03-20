@@ -741,6 +741,17 @@ volumes:
 - **Mobile PWA** — installable app for phones/tablets
 - **Bulk operations** — multi-select tasks for batch actions
 - **Import/Export** — CSV, Trello JSON import
+- **AI Agent integrations** — email, SMS, Telegram, WhatsApp monitors that use AI to create/update/close tasks based on communications
+
+---
+
+## 9a. Documentation Maintenance Requirements
+
+| ID | Requirement | Priority |
+|----|-------------|----------|
+| DOC-001 | **AGENTS.md** must be updated whenever any change is made to the REST API, journal protocol, action types, request/response formats, authentication, or agent configuration that affects how an external agent interacts with the system. | Must |
+| DOC-002 | Pull requests that modify API routes, journal types, or agent-facing behaviour must include corresponding updates to AGENTS.md or be rejected during review. | Must |
+| DOC-003 | AGENTS.md is the single source of truth for agent developers — it must contain complete, working examples for all supported actions. | Must |
 
 ---
 
