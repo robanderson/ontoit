@@ -1,10 +1,13 @@
-import { Plus, RotateCcw, PanelLeft } from 'lucide-react';
+import { useState } from 'react';
+import { Plus, RotateCcw, PanelLeft, ScrollText } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { EnvironmentBadge } from './EnvironmentBadge';
 import { resetLocalData } from '../../adapters/LocalAdapter';
+import { JournalViewer } from '../settings/JournalViewer';
 
 export function Header() {
   const { currentUser, setCreatingTask, loadData, environment, toggleSidebar, isSidebarOpen } = useAppStore();
+  const [showJournal, setShowJournal] = useState(false);
 
   const handleReset = () => {
     if (confirm('Reset all local data to seed fixtures?')) {
@@ -14,6 +17,7 @@ export function Header() {
   };
 
   return (
+    <>
     <header className="bg-white border-b border-[var(--color-border)] px-6 py-3 flex items-center justify-between">
       <div className="flex items-center gap-4">
         <button
@@ -43,6 +47,15 @@ export function Header() {
             Reset Data
           </button>
         )}
+        {environment !== 'local' && (
+          <button
+            onClick={() => setShowJournal(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] border border-[var(--color-border)] rounded-lg hover:bg-[var(--color-surface-tertiary)] transition-colors"
+          >
+            <ScrollText size={14} />
+            Journal
+          </button>
+        )}
         <button
           onClick={() => setCreatingTask(true)}
           className="flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium text-white bg-[var(--color-brand-600)] rounded-lg hover:bg-[var(--color-brand-700)] transition-colors"
@@ -62,5 +75,7 @@ export function Header() {
         )}
       </div>
     </header>
+    {showJournal && <JournalViewer onClose={() => setShowJournal(false)} />}
+    </>
   );
 }

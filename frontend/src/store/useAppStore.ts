@@ -2,6 +2,12 @@ import { create } from 'zustand';
 import type { Task, TaskNote, TaskLink, Tag, User, EnvironmentMode, CreateTaskInput, TaskStatus } from '../types';
 import type { DataAdapter } from '../adapters/DataAdapter';
 import { localAdapter } from '../adapters/LocalAdapter';
+import { apiAdapter } from '../adapters/ApiAdapter';
+
+function getAdapterForEnvironment(env: EnvironmentMode): DataAdapter {
+  if (env === 'local') return localAdapter;
+  return apiAdapter;
+}
 
 export type ColumnVisibility = Record<TaskStatus, boolean>;
 
@@ -38,6 +44,7 @@ interface AppState {
   isSidebarOpen: boolean;
 
   // Actions
+  setEnvironment: (env: EnvironmentMode) => Promise<void>;
   loadData: () => Promise<void>;
   selectTask: (taskId: string | null) => void;
   closeTaskDetail: () => void;
@@ -69,6 +76,19 @@ export const useAppStore = create<AppState>((set, get) => ({
   isCreatingTask: false,
   columnVisibility: loadColumnVisibility(),
   isSidebarOpen: false,
+
+  setEnvironment: async (env) => {
+    const adapter = getAdapterForEnvironment(env);
+    set({ environment: env, adapter });
+    // Reload data with the new adapter
+    const [tasks, tags, users, currentUser] = await Promise.all([
+      adapter.getTasks(),
+      adapter.getTags(),
+      adapter.getUsers(),
+      adapter.getCurrentUser(),
+    ]);
+    set({ tasks, tags, users, currentUser });
+  },
 
   loadData: async () => {
     const { adapter } = get();
