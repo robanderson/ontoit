@@ -1,19 +1,36 @@
 import { useState } from 'react';
-import { Plus, RotateCcw, PanelLeft, ScrollText } from 'lucide-react';
+import { Plus, RotateCcw, PanelLeft, ScrollText, Bot, Server } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
+import type { EnvironmentMode } from '../../types';
 import { EnvironmentBadge } from './EnvironmentBadge';
 import { resetLocalData } from '../../adapters/LocalAdapter';
 import { JournalViewer } from '../settings/JournalViewer';
+import { AgentSettings } from '../settings/AgentSettings';
+
+const envOptions: { value: EnvironmentMode; label: string }[] = [
+  { value: 'local', label: 'Local' },
+  { value: 'development', label: 'Development' },
+  { value: 'production', label: 'Production' },
+];
 
 export function Header() {
-  const { currentUser, setCreatingTask, loadData, environment, toggleSidebar, isSidebarOpen } = useAppStore();
+  const { currentUser, setCreatingTask, loadData, environment, setEnvironment, toggleSidebar, isSidebarOpen } = useAppStore();
   const [showJournal, setShowJournal] = useState(false);
+  const [showAgents, setShowAgents] = useState(false);
 
   const handleReset = () => {
     if (confirm('Reset all local data to seed fixtures?')) {
       resetLocalData();
       loadData();
     }
+  };
+
+  const handleEnvChange = async (env: EnvironmentMode) => {
+    if (env === environment) return;
+    if (env === 'production') {
+      if (!confirm('Switch to Production — are you sure?')) return;
+    }
+    await setEnvironment(env);
   };
 
   return (
@@ -38,6 +55,20 @@ export function Header() {
       </div>
 
       <div className="flex items-center gap-3">
+        {/* Environment switcher */}
+        <div className="flex items-center gap-1.5">
+          <Server size={14} className="text-[var(--color-text-tertiary)]" />
+          <select
+            value={environment}
+            onChange={e => handleEnvChange(e.target.value as EnvironmentMode)}
+            className="text-xs px-2 py-1 border border-[var(--color-border)] rounded-md bg-white"
+          >
+            {envOptions.map(o => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </div>
+
         {environment === 'local' && (
           <button
             onClick={handleReset}
@@ -48,13 +79,22 @@ export function Header() {
           </button>
         )}
         {environment !== 'local' && (
-          <button
-            onClick={() => setShowJournal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] border border-[var(--color-border)] rounded-lg hover:bg-[var(--color-surface-tertiary)] transition-colors"
-          >
-            <ScrollText size={14} />
-            Journal
-          </button>
+          <>
+            <button
+              onClick={() => setShowJournal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] border border-[var(--color-border)] rounded-lg hover:bg-[var(--color-surface-tertiary)] transition-colors"
+            >
+              <ScrollText size={14} />
+              Journal
+            </button>
+            <button
+              onClick={() => setShowAgents(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] border border-[var(--color-border)] rounded-lg hover:bg-[var(--color-surface-tertiary)] transition-colors"
+            >
+              <Bot size={14} />
+              Agents
+            </button>
+          </>
         )}
         <button
           onClick={() => setCreatingTask(true)}
@@ -76,6 +116,7 @@ export function Header() {
       </div>
     </header>
     {showJournal && <JournalViewer onClose={() => setShowJournal(false)} />}
+    {showAgents && <AgentSettings onClose={() => setShowAgents(false)} />}
     </>
   );
 }
