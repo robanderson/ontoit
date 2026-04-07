@@ -320,3 +320,85 @@ An email-monitoring agent that creates tasks from incoming emails:
    do not retry — wait for human approval.
 7. **Handle errors gracefully.** Log failures and retry with backoff for 500
    errors. Do not retry 400 errors without fixing the request.
+
+---
+
+## MCP Server (Model Context Protocol)
+
+OnToIt includes an MCP server that exposes the full task API as Claude-callable
+tools. This allows Claude (and other MCP-compatible clients) to interact with
+tasks natively via tool use, without hand-crafting HTTP requests.
+
+### Setup
+
+Add to your Claude Code MCP configuration (e.g. `~/.claude/mcp.json` or
+project `.mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "ontoit": {
+      "command": "npx",
+      "args": ["tsx", "<path-to-ontoit>/backend/src/mcp/server.ts"],
+      "env": {
+        "ONTOIT_API_URL": "http://localhost:3001",
+        "ONTOIT_USER_ID": "agent-claude"
+      }
+    }
+  }
+}
+```
+
+Or run directly:
+
+```bash
+cd backend
+ONTOIT_API_URL=http://localhost:3001 ONTOIT_USER_ID=agent-claude npm run mcp
+```
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ONTOIT_API_URL` | `http://localhost:3001` | Base URL of the OnToIt backend |
+| `ONTOIT_USER_ID` | `agent-claude` | User ID the MCP server authenticates as |
+
+### Available Tools
+
+| Tool | Description |
+|------|-------------|
+| `ontoit_list_tasks` | List/filter tasks (status, assignedTo, priority, search, parentTaskId) |
+| `ontoit_get_task` | Get a single task by ID |
+| `ontoit_create_task` | Create a new task (supports inline sub-tasks) |
+| `ontoit_update_task` | Update task fields |
+| `ontoit_move_task` | Move task to a different status column |
+| `ontoit_delete_task` | Archive (soft-delete) a task |
+| `ontoit_search_tasks` | Keyword search across tasks |
+| `ontoit_get_notes` | Get notes/activity for a task |
+| `ontoit_add_note` | Add a note to a task |
+| `ontoit_get_links` | Get links for a task |
+| `ontoit_add_link` | Add a link to a task |
+| `ontoit_list_tags` | List all tags |
+| `ontoit_list_users` | List all users |
+| `ontoit_get_children` | Get child/sub-tasks of a parent task |
+
+All mutation tools automatically handle the two-step RequestID protocol
+internally — the caller just provides the payload.
+
+### Important
+
+- The MCP server agent user (default `agent-claude`) must exist in the system.
+  Create it via the Agent Management UI or through the API.
+- If the agent user has `requiresApproval: true`, mutations will return
+  `pending_approval` and require human sign-off before taking effect.
+
+---
+
+## Claude Skill File
+
+A Claude Skill file (`ontoit-skill.md`) is provided in the project root. This
+gives Claude human-readable guidance on how to use the OnToIt MCP tools,
+including common workflows and conventions.
+
+To use it, reference it in your Claude Code project configuration or include it
+as context when interacting with the system.
